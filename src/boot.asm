@@ -7,19 +7,25 @@
 
 ; - The BITS directive specifies whether NASM should generate code designed to run on
 ;   a processor operating in 16-bit mode, or 32, 64
-[BITS 16]
+BITS 16
 ; - Boot secetion is loaded at 07C00H. Here are some discussion of similar approches:
 ;   http://forum.osdev.org/viewtopic.php?f=1&t=20933
-[ORG 0x7C00]
+ORG 0x7C00
+
+MIN_KERNEL_OFFSET equ 0x9000
 
 ; - We are currently in real mode
-start:
-; - Teletype output: https://en.wikipedia.org/wiki/INT_10H
-    mov ah, 0x0E
-    mov al, ':'
-    int 0x10
-    mov al, ')'
-    int 0x10
+entry_16:
+    mov [BOOT_DRIVE], dl
+    mov ax, 0
+    mov ds, ax
+    mov es, ax
+; - Load minimum kernal
+; - Still under 1MB limit
+    call load_min_kernel_16
+; - Print a message in real mode :)
+    mov si, KERNEL_LOADED_MESSAGE_16
+    call print_string_16
 ; - Jump to protected mode:
 ; - Clear interrupts
     cli
@@ -31,14 +37,80 @@ start:
     or eax, 1
     mov cr0, eax
 ; - Long jump
-    jmp 0x08:protected
+    jmp 0x08:entry_32
 
 ; - Loop. Equals to 'while(true){;}'
 ; - We should never reach here.
     jmp $
 
-[BITS 32]
-protected:
+; - Print a string in real mode
+; - Teletype output: https://en.wikipedia.org/wiki/INT_10H
+print_string_16:
+    pusha
+    mov ah, 0x0E
+    .loop:
+    mov al, [ds:si]
+    cmp al, 0
+    je .return
+    int 0x10
+    inc si
+    jmp .loop
+    .return:
+    popa
+    ret
+
+load_disk_16:
+    push dx
+    mov ah, 0x02
+    mov al, dh
+    mov ch, 0x00
+    mov dh, 0x00
+    mov cl, 0x02
+    int 0x13
+    jc .disk_error
+    pop dx
+    cmp dh, al
+    jne .disk_error
+    ret
+    .disk_error:
+    mov si, DISK_ERROR_MSG_16
+    call print_string_16
+    jmp $
+
+; - Load 10 sectors onto kernal offset
+; - TODO: this doesn't work now...
+load_min_kernel_16:
+    mov bx, MIN_KERNEL_OFFSET
+    mov dh, 20
+    mov dl, [BOOT_DRIVE]
+    call load_disk_16
+    ret
+
+; - Var
+BOOT_DRIVE db 0
+; - Constants
+KERNEL_LOADED_MESSAGE_16:
+    db 'Kernel loaded!',0
+DISK_ERROR_MSG_16:
+    db 'Disk error.',0
+; - A flat protected mode
+;   http://wiki.osdev.org/Global_Descriptor_Table
+gdt:
+; - NULL
+    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+; - Code selector, limit=2^20=4GB,
+    db 0xFF,0xFF,0x00,0x00,0x00,0x9A,0xCF,0x00
+; - Data selector, 4GB
+    db 0xFF,0xFF,0x00,0x00,0x00,0x92,0xCF,0x00
+gdtr:
+; - Size = (size of gdt) - 1
+    dw $ - gdt - 1
+; - Offset of gdt
+    dd gdt
+
+; ----- Entering 32 bits world -----
+BITS 32
+entry_32:
     mov ax, 0x10
     mov ds, ax
     mov es, ax
@@ -61,40 +133,20 @@ protected:
     mov al, '^'
     mov [edx], ax
     add edx, 2
+    mov al, '.'
+    mov [edx], ax
+    add edx, 2
+    mov al, '.'
+    mov [edx], ax
+    add edx, 2
+    mov al, '.'
+    mov [edx], ax
+    add edx, 2
 
+    jmp 0x08:MIN_KERNEL_OFFSET
     jmp $
 
-; - A utility routine to clear screen
-cls:
-    pusha
-    mov edx, 0xB8000
-    mov bx, 0
-    .loop:
-    cmp bx, 4000
-    jz .return
-    mov ax, 0x00
-    mov [edx], ax
-    add bx, 2
-    add edx, 2
-    jmp .loop
-    .return:
-    popa
-    ret
-
-; - A flat protected mode
-;   http://wiki.osdev.org/Global_Descriptor_Table
-gdt:
-; - NULL
-    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
-; - Code selector, limit=2^20=4GB,
-    db 0xFF,0xFF,0x00,0x00,0x00,0x9A,0xCF,0x00
-; - Data selector, 4GB
-    db 0xFF,0xFF,0x00,0x00,0x00,0x92,0xCF,0x00
-gdtr:
-; - Size = (size of gdt) - 1
-    dw $ - gdt - 1
-; - Offset of gdt
-    dd gdt
+%include "utils.asm"
 
 ; - Padding remaining of the section with zeros
 times 510-($-$$) db 0
