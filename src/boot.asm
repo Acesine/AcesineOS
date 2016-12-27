@@ -77,8 +77,8 @@ load_disk_16:
     call print_string_16
     jmp $
 
-; - Load 10 sectors onto kernal offset
-; - TODO: this doesn't work now...
+; - Load 20 sectors onto kernal offset
+; - 20 is randomly choosen -.- ~10KB
 load_min_kernel_16:
     mov bx, MIN_KERNEL_OFFSET
     mov dh, 20
