@@ -4,7 +4,8 @@ CC= /usr/local/crossgcc/bin/i686-elf-gcc
 
 KERNEL_PATH= ./kernels
 HELLO_WORLD_KERNEL= $(KERNEL_PATH)/hello_world_kernel.c
-KERNEL= $(HELLO_WORLD_KERNEL)
+CHRISTMAS_TREE_KERNEL= $(KERNEL_PATH)/christmas_tree.c
+KERNEL= $(CHRISTMAS_TREE_KERNEL)
 
 all: clean local
 
